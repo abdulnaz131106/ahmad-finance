@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="id"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b8f50"><title>Ahmad Finance V2</title>
+<style>
+:root{--g:#0b8f50;--g2:#066b3a;--bg:#f3f8f5;--card:#fff;--txt:#173026;--muted:#718078;--red:#d84b4b;--line:#dfe9e4}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{background:linear-gradient(145deg,#0b8f50,#25b96e);color:#fff;padding:22px 16px 30px;border-radius:0 0 28px 28px}.wrap{max-width:820px;margin:auto;padding:0 15px 40px}h1{margin:0;font-size:27px}.muted{color:var(--muted);font-size:12px}.hero{margin-top:-17px;background:#fff;border-radius:21px;padding:18px;box-shadow:0 8px 25px #153d2915}.balance{font-size:31px;font-weight:800;margin:5px 0 14px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.mini{background:#f2f8f4;padding:12px;border-radius:15px}.mini b{display:block;margin-top:4px}.in{color:var(--g)}.out{color:var(--red)}
+nav{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:15px 0}.tab{border:0;background:#e5f3eb;color:var(--g2);padding:11px 5px;border-radius:12px;font-weight:700}.tab.active{background:var(--g);color:#fff}.page{display:none}.page.active{display:block}.card{background:#fff;border-radius:19px;padding:17px;margin-bottom:13px;box-shadow:0 4px 16px #153d290b}
+form{display:grid;gap:9px}input,select,button{font:inherit}input,select{width:100%;padding:12px;border:1px solid var(--line);border-radius:11px;background:#fff}button.primary{border:0;background:var(--g);color:#fff;padding:12px;border-radius:11px;font-weight:700}.two{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+table{width:100%;border-collapse:collapse;font-size:13px}td{padding:10px 4px;border-bottom:1px solid #edf1ef}td:last-child{text-align:right}.actions button{width:auto;padding:7px 9px;border:0;border-radius:8px}.edit{background:#e8f5ee;color:var(--g2)}.del{background:#fff0f0;color:var(--red)}
+.progress{height:10px;background:#e8eee9;border-radius:10px;overflow:hidden}.bar{height:100%;background:var(--g);width:0}.stat{font-size:24px;font-weight:800}.chips{display:flex;gap:7px;flex-wrap:wrap}.chip{background:#eef7f2;padding:7px 10px;border-radius:99px;font-size:12px}.notice{padding:10px;border-radius:11px;background:#fff8df;color:#735c00;font-size:12px}
+@media(max-width:480px){.grid{grid-template-columns:1fr 1fr}.balance{font-size:27px}nav{grid-template-columns:repeat(4,1fr)}}
+</style></head><body>
+<header><div class="wrap"><h1>Ahmad Finance</h1><div>Keuangan pribadi & bersama</div></div></header>
+<main class="wrap">
+<section class="hero"><div class="muted">Saldo</div><div id="balance" class="balance">Rp0</div>
+<div class="grid"><div class="mini"><span class="muted">Pemasukan bulan ini</span><b class="in" id="income">Rp0</b></div><div class="mini"><span class="muted">Pengeluaran bulan ini</span><b class="out" id="expense">Rp0</b></div></div></section>
+<nav>
+<button class="tab active" data-p="home">Dashboard</button><button class="tab" data-p="add">Transaksi</button><button class="tab" data-p="report">Laporan</button><button class="tab" data-p="settings">Pengaturan</button>
+</nav>
+
+<section id="home" class="page active">
+<div class="card"><div class="two"><div><div class="muted">Target tabungan</div><div class="stat" id="saving">Rp0</div></div><div><div class="muted">Progress</div><div class="stat" id="savingPct">0%</div></div></div><div style="margin-top:10px" class="progress"><div class="bar" id="bar"></div></div></div>
+<div class="card"><b>Pengeluaran berdasarkan kategori</b><div id="cats" style="margin-top:10px"></div></div>
+<div class="card"><b>Transaksi terbaru</b><div id="recent"></div></div>
+</section>
+
+<section id="add" class="page"><div class="card"><h3 id="formTitle">Tambah transaksi</h3><form id="form">
+<input type="hidden" id="editId"><div class="two"><input id="date" type="date" required><select id="type"><option>Pemasukan</option><option>Pengeluaran</option></select></div>
+<div class="two"><select id="category"><option>Gaji</option><option>Bonus</option><option>Usaha</option><option>Makan</option><option>Transportasi</option><option>Belanja</option><option>Tagihan</option><option>Pulsa/Internet</option><option>Hiburan</option><option>Kesehatan</option><option>Pendidikan</option><option>Tabungan</option><option>Lainnya</option></select><select id="method"><option>Cash</option><option>Bank</option><option>E-Wallet</option><option>Lainnya</option></select></div>
+<input id="amount" type="number" min="1" placeholder="Nominal (Rp)" required><input id="note" placeholder="Keterangan"><button class="primary">Simpan</button></form></div></section>
+
+<section id="report" class="page"><div class="card"><div class="two"><input id="month" type="month"><select id="reportType"><option>Semua</option><option>Pemasukan</option><option>Pengeluaran</option></select></div></div><div class="card" id="reportBox"></div></section>
+
+<section id="settings" class="page"><div class="card"><h3>Koneksi Google Sheets</h3><p class="muted">Masukkan URL Web App Apps Script dan token. Data lokal tetap tersimpan jika koneksi gagal.</p>
+<input id="api" placeholder="URL Web App Google Apps Script"><br><br><input id="token" placeholder="Token rahasia"><br><br><button class="primary" onclick="saveSettings()">Simpan koneksi</button><p id="conn" class="muted"></p></div>
+<div class="card"><h3>Target tabungan</h3><input id="target" type="number" placeholder="Target tabungan (Rp)"><br><br><button class="primary" onclick="saveTarget()">Simpan target</button></div>
+<div class="card"><h3>Data</h3><button class="primary" onclick="sync()">🔄 Sinkronisasi sekarang</button><br><br><button class="primary" onclick="exportCSV()">📥 Export CSV</button></div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id), rupiah=n=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(+n||0);
+const KEY='AF_V2_DATA', APIKEY='AF_API', TOKENKEY='AF_TOKEN', TARGETKEY='AF_TARGET';
+let data=JSON.parse(localStorage.getItem(KEY)||'[]');
+let today=new Date(), iso=new Date(today-today.getTimezoneOffset()*60000).toISOString().slice(0,10);
+$('date').value=iso;$('month').value=iso.slice(0,7);$('api').value=localStorage.getItem(APIKEY)||'';$('token').value=localStorage.getItem(TOKENKEY)||'';$('target').value=localStorage.getItem(TARGETKEY)||'';
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.p).classList.add('active');if(b.dataset.p==='report')renderReport()});
+function save(){localStorage.setItem(KEY,JSON.stringify(data))}
+function totals(){let bal=0;data.forEach(x=>bal+=(x.type==='Pemasukan'?1:-1)*+x.amount);return bal}
+function render(){let ym=iso.slice(0,7),inc=0,out=0;data.forEach(x=>{if(x.date?.slice(0,7)===ym){if(x.type==='Pemasukan')inc+=+x.amount;else out+=+x.amount}});$('balance').textContent=rupiah(totals());$('income').textContent=rupiah(inc);$('expense').textContent=rupiah(out);
+let target=+localStorage.getItem(TARGETKEY)||0,saving=Math.max(0,inc-out);$('saving').textContent=rupiah(saving);let pct=target?Math.min(100,saving/target*100):0;$('savingPct').textContent=Math.round(pct)+'%';$('bar').style.width=pct+'%';
+let m={};data.filter(x=>x.type==='Pengeluaran'&&x.date?.slice(0,7)===ym).forEach(x=>m[x.category]=(m[x.category]||0)+ +x.amount);let arr=Object.entries(m).sort((a,b)=>b[1]-a[1]);$('cats').innerHTML=arr.length?arr.map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #edf1ef"><span>${k}</span><b>${rupiah(v)}</b></div>`).join(''):'<div class="muted">Belum ada pengeluaran bulan ini.</div>';
+let rows=data.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);$('recent').innerHTML=rows.length?table(rows):'<div class="muted" style="padding:12px 0">Belum ada transaksi.</div>'}
+function table(rows){return `<table>${rows.map(x=>`<tr><td>${x.date}<br><span class="muted">${x.category} · ${x.method}<br>${x.note||''}</span></td><td class="${x.type==='Pemasukan'?'in':'out'}">${x.type==='Pemasukan'?'+':'-'}${rupiah(x.amount)}<div class="actions"><button class="edit" onclick="editTx('${x.id}')">Edit</button> <button class="del" onclick="delTx('${x.id}')">Hapus</button></div></td></tr>`).join('')}</table>`}
+$('form').onsubmit=e=>{e.preventDefault();let id=$('editId').value||String(Date.now()),x={id,date:$('date').value,type:$('type').value,category:$('category').value,amount:+$('amount').value,method:$('method').value,note:$('note').value};let i=data.findIndex(z=>z.id===id);if(i>=0)data[i]=x;else data.push(x);save();resetForm();render();syncAdd(x)};
+function resetForm(){$('form').reset();$('editId').value='';$('formTitle').textContent='Tambah transaksi';$('date').value=iso}
+function editTx(id){let x=data.find(z=>z.id===id);if(!x)return;$('editId').value=x.id;$('date').value=x.date;$('type').value=x.type;$('category').value=x.category;$('method').value=x.method;$('amount').value=x.amount;$('note').value=x.note||'';$('formTitle').textContent='Edit transaksi';document.querySelector('[data-p="add"]').click()}
+async function delTx(id){if(!confirm('Hapus transaksi ini?'))return;data=data.filter(x=>x.id!==id);save();render();sync()}
+async function post(action,payload){let u=localStorage.getItem(APIKEY);if(!u)return null;let r=await fetch(u,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload,token:localStorage.getItem(TOKENKEY)||''})});return r.json()}
+async function syncAdd(x){try{if(await post('add',{data:x}))$('conn').textContent='Tersimpan ke Google Sheets';}catch(e){}}
+async function sync(){try{let r=await post('list',{});if(r?.ok){data=r.data;save();render();renderReport();$('conn').textContent='Sinkronisasi berhasil';}}catch(e){$('conn').textContent='Koneksi gagal; data lokal tetap aman.'}}
+function saveSettings(){localStorage.setItem(APIKEY,$('api').value.trim());localStorage.setItem(TOKENKEY,$('token').value.trim());$('conn').textContent='Pengaturan disimpan';sync()}
+function saveTarget(){localStorage.setItem(TARGETKEY,$('target').value||0);render()}
+function renderReport(){let ym=$('month').value||iso.slice(0,7),t=$('reportType').value,rows=data.filter(x=>x.date?.slice(0,7)===ym&&(t==='Semua'||x.type===t)),inc=rows.filter(x=>x.type==='Pemasukan').reduce((s,x)=>s+ +x.amount,0),out=rows.filter(x=>x.type==='Pengeluaran').reduce((s,x)=>s+ +x.amount,0);$('reportBox').innerHTML=`<h3>Laporan ${ym}</h3><div class="grid"><div class="mini">Pemasukan<b class="in">${rupiah(inc)}</b></div><div class="mini">Pengeluaran<b class="out">${rupiah(out)}</b></div></div><p><b>Selisih: ${rupiah(inc-out)}</b></p>${table(rows)}`}
+$('month').onchange=renderReport;$('reportType').onchange=renderReport;
+function exportCSV(){let h=['ID','Tanggal','Jenis','Kategori','Nominal','Metode','Keterangan'];let lines=[h,...data.map(x=>[x.id,x.date,x.type,x.category,x.amount,x.method,x.note||''])].map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(','));let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([lines.join('\\n')],{type:'text/csv'}));a.download='Ahmad_Finance.csv';a.click()}
+render();
+</script></body></html>
