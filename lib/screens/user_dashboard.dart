@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'account_screen.dart';
+import 'category_screen.dart';
+import 'transaction_screen.dart';
 
 class UserDashboard extends StatelessWidget {
   const UserDashboard({super.key});
@@ -20,7 +23,9 @@ class UserDashboard extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_none),
+            icon: const Icon(
+              Icons.notifications_none,
+            ),
             onPressed: () {},
           ),
         ],
@@ -29,10 +34,10 @@ class UserDashboard extends StatelessWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
 
-            // Sapaan
             const Text(
               'Halo, Ahmad 👋',
               style: TextStyle(
@@ -53,17 +58,19 @@ class UserDashboard extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            // Saldo
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: const Color(0xFF0F8B4C),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius:
+                    BorderRadius.circular(20),
               ),
               child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
                 children: [
+
                   Text(
                     'Total Saldo',
                     style: TextStyle(
@@ -88,30 +95,28 @@ class UserDashboard extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            // Pemasukan & Pengeluaran
             Row(
               children: [
 
                 Expanded(
-                  child: _summaryCard(
+                  child: summaryCard(
                     icon: Icons.arrow_downward,
                     title: 'Pemasukan',
                     amount: 'Rp 0',
-                    iconColor: Colors.green,
+                    color: Colors.green,
                   ),
                 ),
 
                 const SizedBox(width: 12),
 
                 Expanded(
-                  child: _summaryCard(
+                  child: summaryCard(
                     icon: Icons.arrow_upward,
                     title: 'Pengeluaran',
                     amount: 'Rp 0',
-                    iconColor: Colors.red,
+                    color: Colors.red,
                   ),
                 ),
-
               ],
             ),
 
@@ -127,39 +132,79 @@ class UserDashboard extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Menu
             GridView.count(
               crossAxisCount: 2,
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
+              physics:
+                  const NeverScrollableScrollPhysics(),
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
               children: [
 
-                _menuCard(
-                  icon: Icons.add_circle_outline,
+                menuCard(
+                  icon:
+                      Icons.add_circle_outline,
                   title: 'Tambah Transaksi',
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const TransactionScreen(),
+                      ),
+                    );
+                  },
                 ),
 
-                _menuCard(
+                menuCard(
                   icon: Icons.receipt_long,
                   title: 'Transaksi',
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const TransactionScreen(),
+                      ),
+                    );
+                  },
                 ),
 
-                _menuCard(
-                  icon: Icons.account_balance_wallet_outlined,
+                menuCard(
+                  icon: Icons
+                      .account_balance_wallet_outlined,
                   title: 'Rekening',
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const AccountScreen(),
+                      ),
+                    );
+                  },
                 ),
 
-                _menuCard(
+                menuCard(
+                  icon:
+                      Icons.category_outlined,
+                  title: 'Kategori',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const CategoryScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                menuCard(
                   icon: Icons.bar_chart,
                   title: 'Laporan',
                   onTap: () {},
                 ),
-
               ],
             ),
 
@@ -180,7 +225,8 @@ class UserDashboard extends StatelessWidget {
               padding: const EdgeInsets.all(25),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius:
+                    BorderRadius.circular(16),
               ),
               child: const Column(
                 children: [
@@ -200,18 +246,20 @@ class UserDashboard extends StatelessWidget {
                       fontSize: 15,
                     ),
                   ),
-
                 ],
               ),
             ),
+
+            const SizedBox(height: 20),
           ],
         ),
       ),
 
-      // Bottom Navigation
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar:
+          BottomNavigationBar(
         currentIndex: 0,
-        selectedItemColor: const Color(0xFF0F8B4C),
+        selectedItemColor:
+            const Color(0xFF0F8B4C),
         items: const [
 
           BottomNavigationBarItem(
@@ -220,7 +268,8 @@ class UserDashboard extends StatelessWidget {
           ),
 
           BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long),
+            icon:
+                Icon(Icons.receipt_long),
             label: 'Transaksi',
           ),
 
@@ -233,31 +282,32 @@ class UserDashboard extends StatelessWidget {
             icon: Icon(Icons.person),
             label: 'Profil',
           ),
-
         ],
       ),
     );
   }
 
-  static Widget _summaryCard({
+  static Widget summaryCard({
     required IconData icon,
     required String title,
     required String amount,
-    required Color iconColor,
+    required Color color,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius:
+            BorderRadius.circular(16),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
 
           Icon(
             icon,
-            color: iconColor,
+            color: color,
           ),
 
           const SizedBox(height: 8),
@@ -279,46 +329,50 @@ class UserDashboard extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-
         ],
       ),
     );
   }
 
-  static Widget _menuCard({
+  static Widget menuCard({
     required IconData icon,
     required String title,
     required VoidCallback onTap,
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius:
+          BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius:
+              BorderRadius.circular(16),
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment:
+              MainAxisAlignment.center,
           children: [
 
             Icon(
               icon,
               size: 35,
-              color: const Color(0xFF0F8B4C),
+              color:
+                  const Color(0xFF0F8B4C),
             ),
 
             const SizedBox(height: 10),
 
             Text(
               title,
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
               style: const TextStyle(
-                fontWeight: FontWeight.w600,
+                fontWeight:
+                    FontWeight.w600,
               ),
             ),
-
           ],
         ),
       ),

@@ -1,4 +1,3 @@
-```dart
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -28,16 +27,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
           .select('id, nama, email, role, created_at')
           .order('created_at', ascending: false);
 
+      if (!mounted) return;
+
       setState(() {
         users = List<Map<String, dynamic>>.from(response);
         isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         isLoading = false;
       });
-
-      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -63,12 +64,23 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     final currentUser = supabase.auth.currentUser;
 
+    final totalUsers =
+        users.where((user) => user['role'] == 'user').length;
+
+    final totalAdmin =
+        users.where((user) => user['role'] == 'admin').length;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard Admin'),
+        title: const Text('Admin Ahmad Finance'),
         backgroundColor: const Color(0xFF0B8F55),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            onPressed: loadUsers,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+          ),
           IconButton(
             onPressed: logout,
             icon: const Icon(Icons.logout),
@@ -76,17 +88,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ],
       ),
-
-      body: RefreshIndicator(
-        onRefresh: loadUsers,
-        child: isLoading
-            ? const Center(
-                child: CircularProgressIndicator(),
-              )
-            : ListView(
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : RefreshIndicator(
+              onRefresh: loadUsers,
+              child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // HEADER ADMIN
+                  // HEADER
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(20),
@@ -95,18 +106,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         children: [
                           const Icon(
                             Icons.admin_panel_settings,
-                            size: 50,
+                            size: 55,
                             color: Color(0xFF0B8F55),
                           ),
                           const SizedBox(height: 12),
                           const Text(
-                            'Selamat Datang, Admin',
+                            'Dashboard Admin',
                             style: TextStyle(
-                              fontSize: 22,
+                              fontSize: 25,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 6),
+                          const Text(
+                            'Selamat datang, Admin Ahmad Finance',
+                            style: TextStyle(
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           Text(
                             currentUser?.email ?? '-',
                             style: const TextStyle(
@@ -126,7 +144,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       Expanded(
                         child: Card(
                           child: Padding(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(18),
                             child: Column(
                               children: [
                                 const Icon(
@@ -136,41 +154,39 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  '${users.length}',
+                                  '$totalUsers',
                                   style: const TextStyle(
-                                    fontSize: 24,
+                                    fontSize: 25,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                const Text('Total Pengguna'),
+                                const Text('User'),
                               ],
                             ),
                           ),
                         ),
                       ),
-
-                      const SizedBox(width: 10),
-
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Card(
                           child: Padding(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(18),
                             child: Column(
                               children: [
                                 const Icon(
-                                  Icons.person,
+                                  Icons.admin_panel_settings,
                                   size: 35,
                                   color: Color(0xFF0B8F55),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  '${users.where((u) => u['role'] == 'user').length}',
+                                  '$totalAdmin',
                                   style: const TextStyle(
-                                    fontSize: 24,
+                                    fontSize: 25,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                const Text('User'),
+                                const Text('Admin'),
                               ],
                             ),
                           ),
@@ -184,14 +200,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   const Text(
                     'Daftar Pengguna',
                     style: TextStyle(
-                      fontSize: 20,
+                      fontSize: 21,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
 
                   const SizedBox(height: 10),
 
-                  // DAFTAR USER
                   if (users.isEmpty)
                     const Card(
                       child: Padding(
@@ -206,12 +221,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
                   ...users.map(
                     (user) {
-                      final nama = user['nama'] ?? 'Tanpa Nama';
-                      final email = user['email'] ?? '-';
-                      final role = user['role'] ?? '-';
+                      final nama =
+                          user['nama']?.toString() ?? 'Tanpa Nama';
+
+                      final email =
+                          user['email']?.toString() ?? '-';
+
+                      final role =
+                          user['role']?.toString() ?? '-';
 
                       return Card(
-                        margin: const EdgeInsets.only(bottom: 10),
+                        margin:
+                            const EdgeInsets.only(bottom: 10),
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor:
@@ -224,15 +245,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             ),
                           ),
                           title: Text(
-                            nama.toString(),
+                            nama,
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          subtitle: Text(email.toString()),
+                          subtitle: Text(email),
                           trailing: Chip(
                             label: Text(
-                              role.toString().toUpperCase(),
+                              role.toUpperCase(),
                             ),
                           ),
                         ),
@@ -241,8 +262,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   ),
                 ],
               ),
-      ),
+            ),
     );
   }
 }
-```
