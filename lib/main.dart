@@ -5,6 +5,8 @@ import 'supabase_config.dart';
 import 'screens/splash_screen.dart';
 import 'screens/user_dashboard.dart';
 import 'screens/admin_dashboard.dart';
+'/admin': (context) => const AdminDashboard(),
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
