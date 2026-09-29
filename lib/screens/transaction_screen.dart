@@ -5,19 +5,24 @@ class TransactionScreen extends StatefulWidget {
   const TransactionScreen({super.key});
 
   @override
-  State<TransactionScreen> createState() => _TransactionScreenState();
+  State<TransactionScreen> createState() =>
+      _TransactionScreenState();
 }
 
-class _TransactionScreenState extends State<TransactionScreen> {
-  final SupabaseClient supabase = Supabase.instance.client;
+class _TransactionScreenState
+    extends State<TransactionScreen> {
+  final SupabaseClient supabase =
+      Supabase.instance.client;
+
+  bool isLoading = true;
 
   List<Map<String, dynamic>> transactions = [];
   List<Map<String, dynamic>> accounts = [];
   List<Map<String, dynamic>> categories = [];
 
-  bool isLoading = true;
-
   String selectedFilter = 'all';
+
+  String searchQuery = '';
 
   @override
   void initState() {
@@ -25,72 +30,114 @@ class _TransactionScreenState extends State<TransactionScreen> {
     loadAllData();
   }
 
-  // ============================================================
-  // LOAD DATA
-  // ============================================================
+  // ================================================================
+  // LOAD SEMUA DATA
+  // ================================================================
 
   Future<void> loadAllData() async {
+    if (!mounted) return;
+
+    setState(() {
+      isLoading = true;
+    });
+
     try {
       final user = supabase.auth.currentUser;
 
       if (user == null) {
-        if (mounted) {
-          setState(() {
-            isLoading = false;
-          });
-        }
+        if (!mounted) return;
+
+        setState(() {
+          isLoading = false;
+        });
+
         return;
       }
 
-      final accountResult = await supabase
+      // ============================================================
+      // LOAD REKENING
+      // ============================================================
+
+      final accountsResponse = await supabase
           .from('accounts')
-          .select()
-          .eq('user_id', user.id)
-          .order('name');
-
-      final categoryResult = await supabase
-          .from('categories')
-          .select()
-          .eq('user_id', user.id)
-          .order('name');
-
-      final transactionResult = await supabase
-          .from('transactions')
-          .select('''
-            *,
-            accounts (
-              name,
-              provider
-            ),
-            categories (
-              name,
-              type
-            )
-          ''')
-          .eq('user_id', user.id)
-          .order(
-            'transaction_date',
-            ascending: false,
+          .select(
+            'id, name, provider, type, initial_balance',
           )
-          .order(
-            'created_at',
-            ascending: false,
-          );
+          .eq('user_id', user.id)
+          .order('name');
+
+      // ============================================================
+      // LOAD KATEGORI
+      // ============================================================
+
+      final categoriesResponse = await supabase
+          .from('categories')
+          .select(
+            'id, name, type, icon',
+          )
+          .eq('user_id', user.id)
+          .order('name');
+
+      // ============================================================
+      // LOAD TRANSAKSI
+      // ============================================================
+
+      final transactionsResponse =
+          await supabase
+              .from('transactions')
+              .select('''
+                id,
+                user_id,
+                account_id,
+                category_id,
+                type,
+                amount,
+                description,
+                transaction_date,
+                created_at,
+                accounts (
+                  id,
+                  name,
+                  provider
+                ),
+                categories (
+                  id,
+                  name,
+                  type,
+                  icon
+                )
+              ''')
+              .eq('user_id', user.id)
+              .order(
+                'transaction_date',
+                ascending: false,
+              )
+              .order(
+                'created_at',
+                ascending: false,
+              );
+
+      final loadedAccounts =
+          List<Map<String, dynamic>>.from(
+        accountsResponse,
+      );
+
+      final loadedCategories =
+          List<Map<String, dynamic>>.from(
+        categoriesResponse,
+      );
+
+      final loadedTransactions =
+          List<Map<String, dynamic>>.from(
+        transactionsResponse,
+      );
 
       if (!mounted) return;
 
       setState(() {
-        accounts =
-            List<Map<String, dynamic>>.from(accountResult);
-
-        categories =
-            List<Map<String, dynamic>>.from(categoryResult);
-
-        transactions =
-            List<Map<String, dynamic>>.from(
-          transactionResult,
-        );
-
+        accounts = loadedAccounts;
+        categories = loadedCategories;
+        transactions = loadedTransactions;
         isLoading = false;
       });
     } catch (e) {
@@ -101,295 +148,674 @@ class _TransactionScreenState extends State<TransactionScreen> {
       });
 
       showMessage(
-        'Gagal mengambil data: $e',
+        'Gagal memuat transaksi: $e',
+        isError: true,
       );
     }
   }
 
-  // ============================================================
+  // ================================================================
+  // FILTER TRANSAKSI
+  // ================================================================
+
+  List<Map<String, dynamic>> get filteredTransactions {
+    List<Map<String, dynamic>> result =
+        List<Map<String, dynamic>>.from(
+      transactions,
+    );
+
+    // Filter tipe
+    if (selectedFilter != 'all') {
+      result = result.where((transaction) {
+        return transaction['type']?.toString() ==
+            selectedFilter;
+      }).toList();
+    }
+
+    // Filter pencarian
+    if (searchQuery.trim().isNotEmpty) {
+      final query =
+          searchQuery.trim().toLowerCase();
+
+      result = result.where((transaction) {
+        final categoryName =
+            getCategoryName(transaction)
+                .toLowerCase();
+
+        final accountName =
+            getAccountName(transaction)
+                .toLowerCase();
+
+        final description =
+            transaction['description']
+                    ?.toString()
+                    .toLowerCase() ??
+                '';
+
+        final amount =
+            transaction['amount']
+                    ?.toString()
+                    .toLowerCase() ??
+                '';
+
+        return categoryName.contains(query) ||
+            accountName.contains(query) ||
+            description.contains(query) ||
+            amount.contains(query);
+      }).toList();
+    }
+
+    return result;
+  }
+
+  // ================================================================
+  // TOTAL PEMASUKAN
+  // ================================================================
+
+  double get totalIncome {
+    double total = 0;
+
+    for (final transaction in transactions) {
+      if (transaction['type'] == 'income') {
+        total += parseAmount(
+          transaction['amount'],
+        );
+      }
+    }
+
+    return total;
+  }
+
+  // ================================================================
+  // TOTAL PENGELUARAN
+  // ================================================================
+
+  double get totalExpense {
+    double total = 0;
+
+    for (final transaction in transactions) {
+      if (transaction['type'] == 'expense') {
+        total += parseAmount(
+          transaction['amount'],
+        );
+      }
+    }
+
+    return total;
+  }
+
+  // ================================================================
+  // PARSE NOMINAL
+  // ================================================================
+
+  double parseAmount(dynamic value) {
+    return double.tryParse(
+          value?.toString() ?? '0',
+        ) ??
+        0;
+  }
+
+  // ================================================================
+  // FORMAT RUPIAH
+  // ================================================================
+
+  String formatRupiah(double value) {
+    final rounded = value.round();
+
+    final formatted = rounded
+        .toString()
+        .replaceAllMapped(
+          RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+          (match) => '${match[1]}.',
+        );
+
+    return 'Rp $formatted';
+  }
+
+  // ================================================================
+  // FORMAT TANGGAL
+  // ================================================================
+
+  String formatDate(String? date) {
+    if (date == null || date.isEmpty) {
+      return '-';
+    }
+
+    try {
+      final parsed = DateTime.parse(date);
+
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'Mei',
+        'Jun',
+        'Jul',
+        'Agu',
+        'Sep',
+        'Okt',
+        'Nov',
+        'Des',
+      ];
+
+      return '${parsed.day} '
+          '${months[parsed.month - 1]} '
+          '${parsed.year}';
+    } catch (_) {
+      return date;
+    }
+  }
+
+  // ================================================================
+  // GET CATEGORY
+  // ================================================================
+
+  Map<String, dynamic>? getCategory(
+    Map<String, dynamic> transaction,
+  ) {
+    final category =
+        transaction['categories'];
+
+    if (category is Map<String, dynamic>) {
+      return category;
+    }
+
+    if (category is List &&
+        category.isNotEmpty) {
+      final first = category.first;
+
+      if (first is Map<String, dynamic>) {
+        return first;
+      }
+    }
+
+    return null;
+  }
+
+  // ================================================================
+  // GET ACCOUNT
+  // ================================================================
+
+  Map<String, dynamic>? getAccount(
+    Map<String, dynamic> transaction,
+  ) {
+    final account =
+        transaction['accounts'];
+
+    if (account is Map<String, dynamic>) {
+      return account;
+    }
+
+    if (account is List &&
+        account.isNotEmpty) {
+      final first = account.first;
+
+      if (first is Map<String, dynamic>) {
+        return first;
+      }
+    }
+
+    return null;
+  }
+
+  // ================================================================
+  // CATEGORY NAME
+  // ================================================================
+
+  String getCategoryName(
+    Map<String, dynamic> transaction,
+  ) {
+    final category =
+        getCategory(transaction);
+
+    return category?['name']?.toString() ??
+        'Tanpa Kategori';
+  }
+
+  // ================================================================
+  // ACCOUNT NAME
+  // ================================================================
+
+  String getAccountName(
+    Map<String, dynamic> transaction,
+  ) {
+    final account =
+        getAccount(transaction);
+
+    if (account == null) {
+      return 'Tanpa Rekening';
+    }
+
+    final name =
+        account['name']?.toString() ?? '';
+
+    final provider =
+        account['provider']?.toString() ?? '';
+
+    if (provider.isNotEmpty) {
+      return '$name • $provider';
+    }
+
+    return name;
+  }
+
+  // ================================================================
+  // SHOW MESSAGE
+  // ================================================================
+
+  void showMessage(
+    String message, {
+    bool isError = false,
+  }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            isError ? Colors.red : Colors.green,
+      ),
+    );
+  }
+
+  // ================================================================
   // TAMBAH TRANSAKSI
-  // ============================================================
+  // ================================================================
 
   Future<void> showAddTransaction() async {
     final user = supabase.auth.currentUser;
 
     if (user == null) {
-      showMessage('Silakan login terlebih dahulu.');
+      showMessage(
+        'Silakan login terlebih dahulu.',
+        isError: true,
+      );
+
       return;
     }
 
     if (accounts.isEmpty) {
       showMessage(
-        'Belum ada rekening. Tambahkan rekening terlebih dahulu.',
+        'Tambahkan rekening terlebih dahulu.',
+        isError: true,
       );
+
       return;
     }
 
     if (categories.isEmpty) {
       showMessage(
-        'Belum ada kategori. Tambahkan kategori terlebih dahulu.',
+        'Tambahkan kategori terlebih dahulu.',
+        isError: true,
       );
+
       return;
     }
 
-    final amountController = TextEditingController();
-    final descriptionController = TextEditingController();
-
-    String transactionType = 'expense';
-
-    String selectedAccountId =
-        accounts.first['id'].toString();
-
-    List<Map<String, dynamic>> availableCategories =
-        categories
-            .where(
-              (item) =>
-                  item['type'] == transactionType,
-            )
-            .toList();
+    String selectedType = 'expense';
 
     String? selectedCategoryId;
 
-    if (availableCategories.isNotEmpty) {
-      selectedCategoryId =
-          availableCategories.first['id'].toString();
-    }
+    String? selectedAccountId =
+        accounts.first['id']?.toString();
 
-    DateTime transactionDate = DateTime.now();
+    DateTime selectedDate =
+        DateTime.now();
 
-    final result = await showDialog<bool>(
+    final amountController =
+        TextEditingController();
+
+    final descriptionController =
+        TextEditingController();
+
+    final result =
+        await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
+      builder: (context) {
         return StatefulBuilder(
           builder: (
             context,
             setDialogState,
           ) {
+            final filteredCategories =
+                categories
+                    .where(
+                      (category) =>
+                          category['type']
+                              ?.toString() ==
+                          selectedType,
+                    )
+                    .toList();
+
+            if (selectedCategoryId != null &&
+                !filteredCategories.any(
+                  (category) =>
+                      category['id']
+                          ?.toString() ==
+                      selectedCategoryId,
+                )) {
+              selectedCategoryId = null;
+            }
+
             return AlertDialog(
               title: const Text(
                 'Tambah Transaksi',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
               ),
 
               content: SizedBox(
                 width: 500,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
 
-                      // JENIS
-                      DropdownButtonFormField<String>(
-                        initialValue: transactionType,
-                        decoration: InputDecoration(
-                          labelText: 'Jenis Transaksi',
-                          prefixIcon: const Icon(
-                            Icons.swap_vert,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(12),
-                          ),
+                child:
+                    SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize:
+                        MainAxisSize.min,
+
+                    children: [
+                      // ==================================================
+                      // TIPE
+                      // ==================================================
+
+                      DropdownButtonFormField<
+                          String>(
+                        initialValue:
+                            selectedType,
+
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Jenis Transaksi',
+                          border:
+                              OutlineInputBorder(),
                         ),
+
                         items: const [
-                          DropdownMenuItem(
-                            value: 'income',
-                            child: Text(
-                              'Pemasukan',
-                            ),
-                          ),
                           DropdownMenuItem(
                             value: 'expense',
                             child: Text(
                               'Pengeluaran',
                             ),
                           ),
+
+                          DropdownMenuItem(
+                            value: 'income',
+                            child: Text(
+                              'Pemasukan',
+                            ),
+                          ),
                         ],
+
                         onChanged: (value) {
-                          if (value == null) return;
+                          if (value ==
+                              null) {
+                            return;
+                          }
 
                           setDialogState(() {
-                            transactionType = value;
+                            selectedType =
+                                value;
 
-                            availableCategories =
-                                categories
-                                    .where(
-                                      (item) =>
-                                          item['type'] ==
-                                          transactionType,
-                                    )
-                                    .toList();
-
-                            if (availableCategories
-                                .isNotEmpty) {
-                              selectedCategoryId =
-                                  availableCategories
-                                      .first['id']
-                                      .toString();
-                            } else {
-                              selectedCategoryId = null;
-                            }
+                            selectedCategoryId =
+                                null;
                           });
                         },
                       ),
 
-                      const SizedBox(height: 15),
+                      const SizedBox(
+                        height: 14,
+                      ),
 
+                      // ==================================================
                       // KATEGORI
-                      DropdownButtonFormField<String>(
+                      // ==================================================
+
+                      DropdownButtonFormField<
+                          String>(
                         initialValue:
                             selectedCategoryId,
-                        decoration: InputDecoration(
-                          labelText: 'Kategori',
-                          prefixIcon: const Icon(
-                            Icons.category_outlined,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(12),
-                          ),
+
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Kategori',
+                          border:
+                              OutlineInputBorder(),
                         ),
-                        items: availableCategories
+
+                        hint: const Text(
+                          'Pilih kategori',
+                        ),
+
+                        items:
+                            filteredCategories
+                                .map(
+                                  (
+                                    category,
+                                  ) {
+                                    return DropdownMenuItem<
+                                        String>(
+                                      value:
+                                          category[
+                                              'id'],
+                                      child: Text(
+                                        category[
+                                                'name']
+                                            ?.toString() ??
+                                            '',
+                                      ),
+                                    );
+                                  },
+                                )
+                                .toList(),
+
+                        onChanged: (value) {
+                          setDialogState(() {
+                            selectedCategoryId =
+                                value;
+                          });
+                        },
+                      ),
+
+                      const SizedBox(
+                        height: 14,
+                      ),
+
+                      // ==================================================
+                      // REKENING
+                      // ==================================================
+
+                      DropdownButtonFormField<
+                          String>(
+                        initialValue:
+                            selectedAccountId,
+
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Rekening',
+                          border:
+                              OutlineInputBorder(),
+                        ),
+
+                        items: accounts
                             .map(
-                              (category) {
+                              (account) {
+                                final name =
+                                    account[
+                                                'name']
+                                            ?.toString() ??
+                                        '';
+
+                                final provider =
+                                    account[
+                                                'provider']
+                                            ?.toString() ??
+                                        '';
+
+                                final title =
+                                    provider
+                                            .isNotEmpty
+                                        ? '$name • $provider'
+                                        : name;
+
                                 return DropdownMenuItem<
                                     String>(
                                   value:
-                                      category['id']
-                                          .toString(),
-                                  child: Text(
-                                    category['name']
-                                        .toString(),
+                                      account[
+                                          'id'],
+
+                                  child:
+                                      Text(
+                                    title,
                                   ),
                                 );
                               },
                             )
                             .toList(),
+
                         onChanged: (value) {
                           setDialogState(() {
-                            selectedCategoryId = value;
+                            selectedAccountId =
+                                value;
                           });
                         },
                       ),
 
-                      const SizedBox(height: 15),
-
-                      // REKENING
-                      DropdownButtonFormField<String>(
-                        initialValue:
-                            selectedAccountId,
-                        decoration: InputDecoration(
-                          labelText: 'Rekening',
-                          prefixIcon: const Icon(
-                            Icons.account_balance_wallet,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(12),
-                          ),
-                        ),
-                        items: accounts.map(
-                          (account) {
-                            return DropdownMenuItem<String>(
-                              value:
-                                  account['id'].toString(),
-                              child: Text(
-                                '${account['name']} - ${account['provider']}',
-                              ),
-                            );
-                          },
-                        ).toList(),
-                        onChanged: (value) {
-                          if (value == null) return;
-
-                          setDialogState(() {
-                            selectedAccountId = value;
-                          });
-                        },
+                      const SizedBox(
+                        height: 14,
                       ),
 
-                      const SizedBox(height: 15),
-
+                      // ==================================================
                       // NOMINAL
+                      // ==================================================
+
                       TextField(
-                        controller: amountController,
+                        controller:
+                            amountController,
+
                         keyboardType:
-                            TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: 'Nominal',
-                          hintText: 'Contoh: 50000',
-                          prefixText: 'Rp ',
-                          prefixIcon: const Icon(
-                            Icons.payments_outlined,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(12),
-                          ),
+                            TextInputType
+                                .number,
+
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Nominal',
+
+                          hintText:
+                              'Contoh: 50000',
+
+                          prefixText:
+                              'Rp ',
+
+                          border:
+                              OutlineInputBorder(),
                         ),
                       ),
 
-                      const SizedBox(height: 15),
+                      const SizedBox(
+                        height: 14,
+                      ),
 
+                      // ==================================================
                       // TANGGAL
+                      // ==================================================
+
                       InkWell(
-                        onTap: () async {
+                        onTap:
+                            () async {
                           final picked =
                               await showDatePicker(
-                            context: context,
+                            context:
+                                context,
+
                             initialDate:
-                                transactionDate,
+                                selectedDate,
+
                             firstDate:
-                                DateTime(2020),
+                                DateTime(
+                              2000,
+                            ),
+
                             lastDate:
-                                DateTime(2100),
+                                DateTime(
+                              2100,
+                            ),
                           );
 
-                          if (picked != null) {
-                            setDialogState(() {
-                              transactionDate = picked;
-                            });
+                          if (picked !=
+                              null) {
+                            setDialogState(
+                              () {
+                                selectedDate =
+                                    picked;
+                              },
+                            );
                           }
                         },
-                        child: InputDecorator(
-                          decoration: InputDecoration(
-                            labelText: 'Tanggal',
-                            prefixIcon: const Icon(
-                              Icons.calendar_today,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(12),
-                            ),
+
+                        child:
+                            InputDecorator(
+                          decoration:
+                              const InputDecoration(
+                            labelText:
+                                'Tanggal',
+                            border:
+                                OutlineInputBorder(),
                           ),
-                          child: Text(
-                            formatDate(
-                              transactionDate,
-                            ),
+
+                          child: Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment
+                                    .spaceBetween,
+
+                            children: [
+                              Text(
+                                formatDate(
+                                  selectedDate
+                                      .toIso8601String()
+                                      .split(
+                                        'T',
+                                      )
+                                      .first,
+                                ),
+                              ),
+
+                              const Icon(
+                                Icons
+                                    .calendar_today,
+                              ),
+                            ],
                           ),
                         ),
                       ),
 
-                      const SizedBox(height: 15),
+                      const SizedBox(
+                        height: 14,
+                      ),
 
+                      // ==================================================
                       // KETERANGAN
+                      // ==================================================
+
                       TextField(
                         controller:
                             descriptionController,
-                        maxLines: 2,
-                        decoration: InputDecoration(
-                          labelText: 'Keterangan',
+
+                        maxLines: 3,
+
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Keterangan',
+
                           hintText:
-                              'Contoh: Makan malam',
-                          prefixIcon: const Icon(
-                            Icons.notes,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(12),
-                          ),
+                              'Contoh: Makan siang',
+
+                          border:
+                              OutlineInputBorder(),
                         ),
                       ),
                     ],
@@ -398,95 +824,132 @@ class _TransactionScreenState extends State<TransactionScreen> {
               ),
 
               actions: [
-
                 TextButton(
                   onPressed: () {
                     Navigator.pop(
-                      dialogContext,
+                      context,
                       false,
                     );
                   },
-                  child: const Text('Batal'),
+
+                  child:
+                      const Text(
+                    'Batal',
+                  ),
                 ),
 
-                ElevatedButton.icon(
-                  icon: const Icon(
-                    Icons.save,
-                  ),
-                  label: const Text(
-                    'Simpan',
-                  ),
+                FilledButton(
                   onPressed: () async {
-                    final amountText =
-                        amountController.text.trim();
-
-                    if (amountText.isEmpty) {
-                      showMessage(
-                        'Nominal belum diisi.',
-                      );
-                      return;
-                    }
-
-                    final amount = double.tryParse(
-                      amountText
-                          .replaceAll('.', '')
-                          .replaceAll(',', ''),
+                    final amount =
+                        double.tryParse(
+                      amountController
+                          .text
+                          .replaceAll(
+                            '.',
+                            '',
+                          )
+                          .replaceAll(
+                            ',',
+                            '',
+                          )
+                          .trim(),
                     );
 
-                    if (amount == null ||
-                        amount <= 0) {
+                    if (selectedCategoryId ==
+                        null) {
                       showMessage(
-                        'Nominal tidak valid.',
+                        'Pilih kategori terlebih dahulu.',
+                        isError:
+                            true,
                       );
+
                       return;
                     }
 
-                    if (selectedCategoryId == null) {
+                    if (selectedAccountId ==
+                        null) {
                       showMessage(
-                        'Kategori belum tersedia untuk jenis transaksi ini.',
+                        'Pilih rekening terlebih dahulu.',
+                        isError:
+                            true,
                       );
+
+                      return;
+                    }
+
+                    if (amount ==
+                            null ||
+                        amount <= 0) {
+                      showMessage(
+                        'Nominal transaksi tidak valid.',
+                        isError:
+                            true,
+                      );
+
                       return;
                     }
 
                     try {
                       await supabase
-                          .from('transactions')
+                          .from(
+                            'transactions',
+                          )
                           .insert({
-                        'user_id': user.id,
+                        'user_id':
+                            user.id,
+
                         'account_id':
                             selectedAccountId,
+
                         'category_id':
                             selectedCategoryId,
+
                         'type':
-                            transactionType,
-                        'amount': amount,
+                            selectedType,
+
+                        'amount':
+                            amount,
+
                         'description':
-                            descriptionController.text
-                                .trim(),
+                            descriptionController
+                                    .text
+                                    .trim()
+                                    .isEmpty
+                                ? null
+                                : descriptionController
+                                    .text
+                                    .trim(),
+
                         'transaction_date':
-                            formatDatabaseDate(
-                          transactionDate,
-                        ),
+                            selectedDate
+                                .toIso8601String()
+                                .split(
+                                  'T',
+                                )
+                                .first,
                       });
 
-                      if (!dialogContext.mounted) {
+                      if (!context.mounted) {
                         return;
                       }
 
                       Navigator.pop(
-                        dialogContext,
+                        context,
                         true,
                       );
                     } catch (e) {
-                      if (!dialogContext.mounted) {
-                        return;
-                      }
-
                       showMessage(
-                        'Gagal menyimpan transaksi: $e',
+                        'Gagal menambahkan transaksi: $e',
+                        isError:
+                            true,
                       );
                     }
                   },
+
+                  child:
+                      const Text(
+                    'Simpan',
+                  ),
                 ),
               ],
             );
@@ -501,33 +964,33 @@ class _TransactionScreenState extends State<TransactionScreen> {
     if (result == true) {
       await loadAllData();
 
-      if (mounted) {
-        showMessage(
-          'Transaksi berhasil disimpan.',
-        );
-      }
+      showMessage(
+        'Transaksi berhasil ditambahkan.',
+      );
     }
   }
 
-  // ============================================================
+  // ================================================================
   // HAPUS TRANSAKSI
-  // ============================================================
+  // ================================================================
 
   Future<void> deleteTransaction(
-    Map<String, dynamic> transaction,
+    String transactionId,
   ) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text(
             'Hapus Transaksi?',
           ),
-          content: const Text(
-            'Data transaksi yang dihapus tidak dapat dikembalikan.',
-          ),
-          actions: [
 
+          content: const Text(
+            'Transaksi yang dihapus tidak dapat dikembalikan.',
+          ),
+
+          actions: [
             TextButton(
               onPressed: () {
                 Navigator.pop(
@@ -535,25 +998,27 @@ class _TransactionScreenState extends State<TransactionScreen> {
                   false,
                 );
               },
-              child: const Text(
-                'Batal',
-              ),
+
+              child:
+                  const Text('Batal'),
             ),
 
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
+            FilledButton(
+              style:
+                  FilledButton.styleFrom(
+                backgroundColor:
+                    Colors.red,
               ),
+
               onPressed: () {
                 Navigator.pop(
                   context,
                   true,
                 );
               },
-              child: const Text(
-                'Hapus',
-              ),
+
+              child:
+                  const Text('Hapus'),
             ),
           ],
         );
@@ -570,407 +1035,758 @@ class _TransactionScreenState extends State<TransactionScreen> {
           .delete()
           .eq(
             'id',
-            transaction['id'].toString(),
+            transactionId,
           );
 
       await loadAllData();
 
-      if (mounted) {
-        showMessage(
-          'Transaksi berhasil dihapus.',
-        );
-      }
+      showMessage(
+        'Transaksi berhasil dihapus.',
+      );
     } catch (e) {
-      if (mounted) {
-        showMessage(
-          'Gagal menghapus transaksi: $e',
-        );
-      }
+      showMessage(
+        'Gagal menghapus transaksi: $e',
+        isError: true,
+      );
     }
   }
 
-  // ============================================================
-  // FORMAT RUPIAH
-  // ============================================================
+  // ================================================================
+  // TRANSACTION CARD
+  // ================================================================
 
-  String formatRupiah(dynamic value) {
-    final number =
-        double.tryParse(value.toString()) ?? 0;
+  Widget transactionCard(
+    Map<String, dynamic> transaction,
+  ) {
+    final type =
+        transaction['type']?.toString() ??
+            '';
 
-    final rounded = number.round();
+    final amount =
+        parseAmount(
+      transaction['amount'],
+    );
 
-    final text = rounded.toString();
+    final isIncome =
+        type == 'income';
 
-    final buffer = StringBuffer();
+    final color =
+        isIncome
+            ? Colors.green
+            : Colors.red;
 
-    for (int i = 0; i < text.length; i++) {
-      if (i > 0 &&
-          (text.length - i) % 3 == 0) {
-        buffer.write('.');
-      }
+    final icon =
+        isIncome
+            ? Icons.arrow_downward
+            : Icons.arrow_upward;
 
-      buffer.write(text[i]);
-    }
+    final prefix =
+        isIncome ? '+' : '-';
 
-    return 'Rp ${buffer.toString()}';
-  }
+    final categoryName =
+        getCategoryName(
+      transaction,
+    );
 
-  // ============================================================
-  // FORMAT TANGGAL
-  // ============================================================
+    final accountName =
+        getAccountName(
+      transaction,
+    );
 
-  String formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year}';
-  }
+    final description =
+        transaction['description']
+                ?.toString() ??
+            '';
 
-  String formatDatabaseDate(DateTime date) {
-    return '${date.year}-'
-        '${date.month.toString().padLeft(2, '0')}-'
-        '${date.day.toString().padLeft(2, '0')}';
-  }
+    final date =
+        transaction['transaction_date']
+            ?.toString();
 
-  // ============================================================
-  // MESSAGE
-  // ============================================================
+    final transactionId =
+        transaction['id']
+            ?.toString();
 
-  void showMessage(String message) {
-    if (!mounted) return;
+    return Container(
+      width:
+          double.infinity,
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
+      margin:
+          const EdgeInsets.only(
+        bottom: 10,
+      ),
+
+      padding:
+          const EdgeInsets.all(14),
+
+      decoration:
+          BoxDecoration(
+        color: Colors.white,
+
+        borderRadius:
+            BorderRadius.circular(
+          16,
+        ),
+      ),
+
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+
+        children: [
+          // ==========================================================
+          // ICON
+          // ==========================================================
+
+          Container(
+            width: 46,
+            height: 46,
+
+            decoration:
+                BoxDecoration(
+              color:
+                  color.withValues(
+                alpha: 0.12,
+              ),
+
+              borderRadius:
+                  BorderRadius.circular(
+                13,
+              ),
+            ),
+
+            child: Icon(
+              icon,
+              color: color,
+            ),
+          ),
+
+          const SizedBox(
+            width: 12,
+          ),
+
+          // ==========================================================
+          // INFORMASI
+          // ==========================================================
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+
+              children: [
+                Text(
+                  categoryName,
+
+                  style:
+                      const TextStyle(
+                    fontSize: 15,
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 4,
+                ),
+
+                Text(
+                  accountName,
+
+                  maxLines: 1,
+
+                  overflow:
+                      TextOverflow.ellipsis,
+
+                  style:
+                      const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 12,
+                  ),
+                ),
+
+                if (description
+                    .isNotEmpty) ...[
+                  const SizedBox(
+                    height: 3,
+                  ),
+
+                  Text(
+                    description,
+
+                    maxLines: 2,
+
+                    overflow:
+                        TextOverflow.ellipsis,
+
+                    style:
+                        const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+
+                const SizedBox(
+                  height: 4,
+                ),
+
+                Text(
+                  formatDate(date),
+
+                  style:
+                      const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(
+            width: 8,
+          ),
+
+          // ==========================================================
+          // NOMINAL + DELETE
+          // ==========================================================
+
+          Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.end,
+
+            children: [
+              Text(
+                '$prefix${formatRupiah(amount)}',
+
+                style: TextStyle(
+                  color: color,
+
+                  fontSize: 13,
+
+                  fontWeight:
+                      FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(
+                height: 8,
+              ),
+
+              if (transactionId != null)
+                IconButton(
+                  tooltip:
+                      'Hapus transaksi',
+
+                  visualDensity:
+                      VisualDensity
+                          .compact,
+
+                  padding:
+                      EdgeInsets.zero,
+
+                  constraints:
+                      const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+
+                  onPressed: () {
+                    deleteTransaction(
+                      transactionId,
+                    );
+                  },
+
+                  icon:
+                      const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                    size: 20,
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  // ============================================================
-  // FILTER TRANSAKSI
-  // ============================================================
+  // ================================================================
+  // FILTER CHIP
+  // ================================================================
 
-  List<Map<String, dynamic>> get filteredTransactions {
-    if (selectedFilter == 'all') {
-      return transactions;
-    }
+  Widget filterChip({
+    required String value,
+    required String label,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
 
-    return transactions
-        .where(
-          (transaction) =>
-              transaction['type'] ==
-              selectedFilter,
-        )
-        .toList();
+      selected:
+          selectedFilter == value,
+
+      onSelected: (selected) {
+        if (!selected) return;
+
+        setState(() {
+          selectedFilter = value;
+        });
+      },
+
+      selectedColor:
+          const Color(0xFF0F8B4C)
+              .withValues(
+        alpha: 0.15,
+      ),
+    );
   }
 
-  // ============================================================
-  // TOTAL PEMASUKAN
-  // ============================================================
-
-  double get totalIncome {
-    double total = 0;
-
-    for (final transaction in transactions) {
-      if (transaction['type'] == 'income') {
-        total +=
-            double.tryParse(
-                  transaction['amount'].toString(),
-                ) ??
-                0;
-      }
-    }
-
-    return total;
-  }
-
-  // ============================================================
-  // TOTAL PENGELUARAN
-  // ============================================================
-
-  double get totalExpense {
-    double total = 0;
-
-    for (final transaction in transactions) {
-      if (transaction['type'] == 'expense') {
-        total +=
-            double.tryParse(
-                  transaction['amount'].toString(),
-                ) ??
-                0;
-      }
-    }
-
-    return total;
-  }
-
-  // ============================================================
+  // ================================================================
   // BUILD
-  // ============================================================
+  // ================================================================
 
   @override
   Widget build(BuildContext context) {
-    final visibleTransactions =
+    final displayedTransactions =
         filteredTransactions;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F6),
+      backgroundColor:
+          const Color(0xFFF5F7F6),
+
+      // ============================================================
+      // APP BAR
+      // ============================================================
 
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F8B4C),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Transaksi',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-
-      floatingActionButton: FloatingActionButton.extended(
         backgroundColor:
             const Color(0xFF0F8B4C),
-        foregroundColor: Colors.white,
-        onPressed: showAddTransaction,
-        icon: const Icon(
+
+        foregroundColor:
+            Colors.white,
+
+        elevation: 0,
+
+        title: const Text(
+          'Riwayat Transaksi',
+
+          style: TextStyle(
+            fontWeight:
+                FontWeight.bold,
+          ),
+        ),
+
+        actions: [
+          IconButton(
+            tooltip:
+                'Refresh',
+
+            onPressed:
+                isLoading
+                    ? null
+                    : loadAllData,
+
+            icon:
+                const Icon(
+              Icons.refresh,
+            ),
+          ),
+        ],
+      ),
+
+      // ============================================================
+      // FAB
+      // ============================================================
+
+      floatingActionButton:
+          FloatingActionButton.extended(
+        backgroundColor:
+            const Color(0xFF0F8B4C),
+
+        foregroundColor:
+            Colors.white,
+
+        onPressed:
+            isLoading
+                ? null
+                : showAddTransaction,
+
+        icon:
+            const Icon(
           Icons.add,
         ),
-        label: const Text(
+
+        label:
+            const Text(
           'Tambah',
         ),
       ),
 
+      // ============================================================
+      // BODY
+      // ============================================================
+
       body: isLoading
           ? const Center(
-              child: CircularProgressIndicator(),
+              child:
+                  CircularProgressIndicator(),
             )
           : RefreshIndicator(
-              onRefresh: loadAllData,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
+              onRefresh:
+                  loadAllData,
 
-                  // ==================================================
-                  // RINGKASAN
-                  // ==================================================
-
-                  Row(
-                    children: [
-
-                      Expanded(
-                        child: summaryCard(
-                          title: 'Pemasukan',
-                          amount:
-                              formatRupiah(
-                            totalIncome,
-                          ),
-                          icon:
-                              Icons.arrow_downward,
-                          color:
-                              Colors.green,
-                        ),
-                      ),
-
-                      const SizedBox(width: 12),
-
-                      Expanded(
-                        child: summaryCard(
-                          title: 'Pengeluaran',
-                          amount:
-                              formatRupiah(
-                            totalExpense,
-                          ),
-                          icon:
-                              Icons.arrow_upward,
-                          color:
-                              Colors.red,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // ==================================================
-                  // FILTER
-                  // ==================================================
-
-                  const Text(
-                    'Filter Transaksi',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
+              child:
                   SingleChildScrollView(
-                    scrollDirection:
-                        Axis.horizontal,
-                    child: Row(
+                physics:
+                    const AlwaysScrollableScrollPhysics(),
+
+                padding:
+                    const EdgeInsets.all(
+                  16,
+                ),
+
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment
+                          .start,
+
+                  children: [
+                    // ==================================================
+                    // SUMMARY
+                    // ==================================================
+
+                    Row(
                       children: [
+                        Expanded(
+                          child:
+                              summaryCard(
+                            title:
+                                'Pemasukan',
 
-                        filterButton(
-                          label: 'Semua',
-                          value: 'all',
+                            amount:
+                                formatRupiah(
+                              totalIncome,
+                            ),
+
+                            color:
+                                Colors.green,
+
+                            icon:
+                                Icons
+                                    .arrow_downward,
+                          ),
                         ),
 
-                        const SizedBox(width: 8),
-
-                        filterButton(
-                          label: 'Pemasukan',
-                          value: 'income',
+                        const SizedBox(
+                          width: 12,
                         ),
 
-                        const SizedBox(width: 8),
+                        Expanded(
+                          child:
+                              summaryCard(
+                            title:
+                                'Pengeluaran',
 
-                        filterButton(
-                          label: 'Pengeluaran',
-                          value: 'expense',
+                            amount:
+                                formatRupiah(
+                              totalExpense,
+                            ),
+
+                            color:
+                                Colors.red,
+
+                            icon:
+                                Icons
+                                    .arrow_upward,
+                          ),
                         ),
                       ],
                     ),
-                  ),
 
-                  const SizedBox(height: 20),
-
-                  // ==================================================
-                  // JUDUL
-                  // ==================================================
-
-                  const Text(
-                    'Daftar Transaksi',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(
+                      height: 18,
                     ),
-                  ),
 
-                  const SizedBox(height: 10),
+                    // ==================================================
+                    // SEARCH
+                    // ==================================================
 
-                  // ==================================================
-                  // KOSONG
-                  // ==================================================
+                    TextField(
+                      onChanged: (value) {
+                        setState(() {
+                          searchQuery =
+                              value;
+                        });
+                      },
 
-                  if (visibleTransactions.isEmpty)
-                    Container(
-                      padding:
-                          const EdgeInsets.all(30),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius:
-                            BorderRadius.circular(
-                          16,
+                      decoration:
+                          InputDecoration(
+                        hintText:
+                            'Cari transaksi...',
+
+                        prefixIcon:
+                            const Icon(
+                          Icons.search,
+                        ),
+
+                        suffixIcon:
+                            searchQuery
+                                    .isNotEmpty
+                                ? IconButton(
+                                    onPressed:
+                                        () {
+                                      setState(
+                                        () {
+                                          searchQuery =
+                                              '';
+                                        },
+                                      );
+                                    },
+
+                                    icon:
+                                        const Icon(
+                                      Icons
+                                          .clear,
+                                    ),
+                                  )
+                                : null,
+
+                        filled:
+                            true,
+
+                        fillColor:
+                            Colors.white,
+
+                        border:
+                            OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius
+                                  .circular(
+                            14,
+                          ),
+
+                          borderSide:
+                              BorderSide
+                                  .none,
+                        ),
+
+                        enabledBorder:
+                            OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius
+                                  .circular(
+                            14,
+                          ),
+
+                          borderSide:
+                              BorderSide
+                                  .none,
+                        ),
+
+                        focusedBorder:
+                            OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius
+                                  .circular(
+                            14,
+                          ),
+
+                          borderSide:
+                              const BorderSide(
+                            color:
+                                Color(
+                              0xFF0F8B4C,
+                            ),
+                          ),
                         ),
                       ),
-                      child: const Column(
+                    ),
+
+                    const SizedBox(
+                      height: 14,
+                    ),
+
+                    // ==================================================
+                    // FILTER
+                    // ==================================================
+
+                    SingleChildScrollView(
+                      scrollDirection:
+                          Axis.horizontal,
+
+                      child: Row(
                         children: [
-
-                          Icon(
-                            Icons
-                                .receipt_long_outlined,
-                            size: 60,
-                            color: Colors.grey,
+                          filterChip(
+                            value: 'all',
+                            label:
+                                'Semua',
                           ),
 
-                          SizedBox(height: 12),
-
-                          Text(
-                            'Belum ada transaksi',
-                            style: TextStyle(
-                              color: Colors.grey,
-                              fontSize: 16,
-                            ),
+                          const SizedBox(
+                            width: 8,
                           ),
 
-                          SizedBox(height: 5),
+                          filterChip(
+                            value:
+                                'income',
+                            label:
+                                'Pemasukan',
+                          ),
 
-                          Text(
-                            'Tekan tombol Tambah untuk membuat transaksi.',
-                            textAlign:
-                                TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.grey,
-                              fontSize: 13,
-                            ),
+                          const SizedBox(
+                            width: 8,
+                          ),
+
+                          filterChip(
+                            value:
+                                'expense',
+                            label:
+                                'Pengeluaran',
                           ),
                         ],
                       ),
                     ),
 
-                  // ==================================================
-                  // LIST TRANSAKSI
-                  // ==================================================
+                    const SizedBox(
+                      height: 20,
+                    ),
 
-                  ...visibleTransactions.map(
-                    (transaction) {
-                      return transactionCard(
-                        transaction,
-                      );
-                    },
-                  ),
+                    // ==================================================
+                    // JUDUL
+                    // ==================================================
 
-                  const SizedBox(height: 100),
-                ],
+                    Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment
+                              .spaceBetween,
+
+                      children: [
+                        const Text(
+                          'Daftar Transaksi',
+
+                          style:
+                              TextStyle(
+                            fontSize: 18,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+
+                        Text(
+                          '${displayedTransactions.length} transaksi',
+
+                          style:
+                              const TextStyle(
+                            color:
+                                Colors.grey,
+                            fontSize:
+                                12,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
+                    // ==================================================
+                    // LIST TRANSAKSI
+                    // ==================================================
+
+                    if (displayedTransactions
+                        .isEmpty)
+                      emptyState()
+                    else
+                      Column(
+                        children:
+                            displayedTransactions
+                                .map(
+                                  (
+                                    transaction,
+                                  ) =>
+                                      transactionCard(
+                                    transaction,
+                                  ),
+                                )
+                                .toList(),
+                      ),
+
+                    const SizedBox(
+                      height: 80,
+                    ),
+                  ],
+                ),
               ),
             ),
     );
   }
 
-  // ============================================================
+  // ================================================================
   // SUMMARY CARD
-  // ============================================================
+  // ================================================================
 
   Widget summaryCard({
     required String title,
     required String amount,
-    required IconData icon,
     required Color color,
+    required IconData icon,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      padding:
+          const EdgeInsets.all(16),
+
+      decoration:
+          BoxDecoration(
         color: Colors.white,
+
         borderRadius:
-            BorderRadius.circular(16),
+            BorderRadius.circular(
+          16,
+        ),
       ),
+
       child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
-        children: [
 
-          CircleAvatar(
-            radius: 18,
-            backgroundColor:
-                color.withValues(
-              alpha: 0.12,
-            ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 20,
-            ),
+        children: [
+          Icon(
+            icon,
+            color: color,
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(
+            height: 8,
+          ),
 
           Text(
             title,
-            style: const TextStyle(
+
+            style:
+                const TextStyle(
               color: Colors.grey,
               fontSize: 13,
             ),
           ),
 
-          const SizedBox(height: 4),
+          const SizedBox(
+            height: 4,
+          ),
 
           Text(
             amount,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
+
+            maxLines: 1,
+
+            overflow:
+                TextOverflow.ellipsis,
+
+            style:
+                const TextStyle(
+              fontSize: 15,
+              fontWeight:
+                  FontWeight.bold,
             ),
           ),
         ],
@@ -978,187 +1794,102 @@ class _TransactionScreenState extends State<TransactionScreen> {
     );
   }
 
-  // ============================================================
-  // FILTER BUTTON
-  // ============================================================
+  // ================================================================
+  // EMPTY STATE
+  // ================================================================
 
-  Widget filterButton({
-    required String label,
-    required String value,
-  }) {
-    final bool active =
-        selectedFilter == value;
+  Widget emptyState() {
+    String title =
+        'Belum ada transaksi';
 
-    return ChoiceChip(
-      label: Text(label),
-      selected: active,
-      onSelected: (_) {
-        setState(() {
-          selectedFilter = value;
-        });
-      },
-      selectedColor:
-          const Color(0xFF0F8B4C),
-      labelStyle: TextStyle(
-        color: active
-            ? Colors.white
-            : Colors.black87,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
+    String subtitle =
+        'Tambahkan transaksi untuk melihat riwayat keuangan.';
 
-  // ============================================================
-  // TRANSACTION CARD
-  // ============================================================
+    if (searchQuery.trim().isNotEmpty) {
+      title =
+          'Transaksi tidak ditemukan';
 
-  Widget transactionCard(
-    Map<String, dynamic> transaction,
-  ) {
-    final bool isIncome =
-        transaction['type'] == 'income';
+      subtitle =
+          'Coba gunakan kata pencarian yang berbeda.';
+    } else if (selectedFilter ==
+        'income') {
+      title =
+          'Belum ada pemasukan';
 
-    final category =
-        transaction['categories']
-            as Map<String, dynamic>?;
+      subtitle =
+          'Belum terdapat transaksi pemasukan.';
+    } else if (selectedFilter ==
+        'expense') {
+      title =
+          'Belum ada pengeluaran';
 
-    final account =
-        transaction['accounts']
-            as Map<String, dynamic>?;
-
-    final categoryName =
-        category?['name'] ?? 'Kategori';
-
-    final accountName =
-        account?['name'] ?? 'Rekening';
-
-    final provider =
-        account?['provider'] ?? '';
-
-    final description =
-        transaction['description'] ?? '';
-
-    final date =
-        transaction['transaction_date'] ?? '';
-
-    final amount =
-        transaction['amount'];
+      subtitle =
+          'Belum terdapat transaksi pengeluaran.';
+    }
 
     return Container(
-      margin:
-          const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
+      width:
+          double.infinity,
+
+      padding:
+          const EdgeInsets.all(30),
+
+      decoration:
+          BoxDecoration(
         color: Colors.white,
+
         borderRadius:
-            BorderRadius.circular(16),
+            BorderRadius.circular(
+          16,
+        ),
       ),
-      child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 8,
-        ),
 
-        leading: CircleAvatar(
-          backgroundColor:
-              isIncome
-                  ? Colors.green.withValues(
-                      alpha: 0.12,
-                    )
-                  : Colors.red.withValues(
-                      alpha: 0.12,
-                    ),
-          child: Icon(
-            isIncome
-                ? Icons.arrow_downward
-                : Icons.arrow_upward,
-            color: isIncome
-                ? Colors.green
-                : Colors.red,
+      child: Column(
+        children: [
+          const Icon(
+            Icons
+                .receipt_long_outlined,
+
+            size: 60,
+
+            color: Colors.grey,
           ),
-        ),
 
-        title: Text(
-          categoryName.toString(),
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
+          const SizedBox(
+            height: 12,
           ),
-        ),
 
-        subtitle: Padding(
-          padding:
-              const EdgeInsets.only(top: 4),
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
+          Text(
+            title,
 
-              Text(
-                '$accountName'
-                '${provider.toString().isNotEmpty ? ' • $provider' : ''}',
-                style: const TextStyle(
-                  fontSize: 13,
-                ),
-              ),
+            textAlign:
+                TextAlign.center,
 
-              if (description
-                  .toString()
-                  .isNotEmpty)
-                Text(
-                  description.toString(),
-                  style: const TextStyle(
-                    color: Colors.grey,
-                  ),
-                ),
-
-              const SizedBox(height: 3),
-
-              Text(
-                date.toString(),
-                style: const TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        trailing: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
-          crossAxisAlignment:
-              CrossAxisAlignment.end,
-          children: [
-
-            Text(
-              '${isIncome ? '+' : '-'} ${formatRupiah(amount)}',
-              style: TextStyle(
-                color: isIncome
-                    ? Colors.green
-                    : Colors.red,
-                fontWeight:
-                    FontWeight.bold,
-                fontSize: 13,
-              ),
+            style:
+                const TextStyle(
+              fontSize: 16,
+              fontWeight:
+                  FontWeight.bold,
             ),
+          ),
 
-            const SizedBox(height: 5),
+          const SizedBox(
+            height: 6,
+          ),
 
-            InkWell(
-              onTap: () {
-                deleteTransaction(
-                  transaction,
-                );
-              },
-              child: const Icon(
-                Icons.delete_outline,
-                color: Colors.red,
-                size: 21,
-              ),
+          Text(
+            subtitle,
+
+            textAlign:
+                TextAlign.center,
+
+            style:
+                const TextStyle(
+              color: Colors.grey,
+              fontSize: 13,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
